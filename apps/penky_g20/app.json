@@ -1,0 +1,48 @@
+{
+  "id": "penky_g20",
+  "title": "Penky G20",
+  "description": "Online card game client",
+  "version": "0.1.0",
+  "vendor": "custom",
+  "loggingId": "OB10",
+  "iconGlyph": "gauge",
+  "internet": true,
+  "signals": {
+    "de.bmw.infotainment.vehicle.Vehicle2": {
+      "statusCarSpeed2": "rs"
+    }
+  },
+  "screens": [
+    {
+      "name": "MAIN",
+      "kind": "canvas",
+      "title": "Penky G20",
+      "buttons": [
+        [
+          "BTN_SETTINGS",
+          "Settings"
+        ]
+      ]
+    }
+  ],
+  "settings": [
+    {
+      "key": "parkedOnly",
+      "label": "Pause while moving",
+      "type": "bool",
+      "default": true
+    },
+    {
+      "key": "confirmMoves",
+      "label": "Confirm cards with a second tap",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "key": "serverUrl",
+      "label": "Game server URL",
+      "type": "text",
+      "default": "https://penky.solefir.app/hub/game"
+    }
+  ]
+}

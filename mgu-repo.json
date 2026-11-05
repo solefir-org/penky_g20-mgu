@@ -3,6 +3,7 @@
   "apps": {
     "path": "apps/*",
     "manifest": "app.json",
+    "exclude": ["brake_test", "car_vitals", "doom", "draggy", "dtc_scanner", "dyno", "edrive", "gforce", "live_adjustments", "live_data", "redline", "service", "warmup", "zf8hp"],
     "icon": "icon.png",
     "mguHmi": ["ID7"],
     "requires": { "idrive7-renderd": "2.1.7", "mgu-inputgate": "1.0.0" },
