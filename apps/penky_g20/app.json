@@ -2,7 +2,7 @@
   "id": "penky_g20",
   "title": "Penky G20",
   "description": "Online card game client",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "vendor": "custom",
   "loggingId": "OB10",
   "iconGlyph": "gauge",

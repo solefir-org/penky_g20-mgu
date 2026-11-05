@@ -5,24 +5,44 @@ const http = require('http');
 const https = require('https');
 const url = require('url');
 const dns = require('dns');
+const net = require('net');
 const fs = require('fs');
 const path = require('path');
 
 const RS = String.fromCharCode(0x1e);
+const NO_RESOLVER = ['EAI_AGAIN', 'ENOTFOUND'];
 
-function readDns(dataDir) {
+// DNS servers of the Store uplink's lease, read again for each request: present only while the uplink is online.
+function leaseDns(dataDir) {
     try {
         const lease = JSON.parse(fs.readFileSync(path.join(dataDir, 'uplink.json'), 'utf8'));
-        if (lease && Array.isArray(lease.dns) && lease.dns.length) dns.setServers(lease.dns);
+        if (lease && Array.isArray(lease.dns)) return lease.dns.filter((server) => typeof server === 'string' && server);
     } catch (e) { /* uplink is offline or not installed */ }
+    return [];
 }
 
-function request(address, method, body, timeout, onRequest) {
+// The uplink leaves the unit's resolver alone, and http.request resolves through it (getaddrinfo), which does not
+// reach the internet. Names are looked up on the lease's servers instead, as mgu-store's updater does.
+function lookupVia(servers) {
+    if (!servers || !servers.length) return undefined;
+    const resolver = new dns.Resolver();
+    resolver.setServers(servers);
+    return (hostname, options, cb) => {
+        if (typeof options === 'function') cb = options;
+        if (net.isIP(hostname)) return cb(null, hostname, net.isIP(hostname));
+        resolver.resolve4(hostname, (err, addrs) => {
+            if (err || !addrs || !addrs.length) return cb(err || new Error('No address for ' + hostname));
+            cb(null, addrs[0], 4);
+        });
+    };
+}
+
+function request(address, method, body, timeout, onRequest, servers) {
     return new Promise((resolve, reject) => {
         const parsed = url.parse(address);
         const transport = parsed.protocol === 'https:' ? https : parsed.protocol === 'http:' ? http : null;
         if (!transport || !parsed.hostname) return reject(new Error('Address must start with http:// or https://'));
-        const req = transport.request({
+        const options = {
             protocol: parsed.protocol,
             hostname: parsed.hostname,
             port: parsed.port || undefined,
@@ -32,13 +52,21 @@ function request(address, method, body, timeout, onRequest) {
                 'Content-Type': 'text/plain;charset=UTF-8',
                 'Content-Length': Buffer.byteLength(body),
             },
-        }, (res) => {
+        };
+        const lookup = lookupVia(servers);
+        if (lookup) options.lookup = lookup;
+        const req = transport.request(options, (res) => {
             const chunks = [];
             res.on('data', (chunk) => chunks.push(chunk));
             res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString('utf8') }));
         });
         if (onRequest) onRequest(req);
-        req.on('error', reject);
+        req.on('error', (error) => {
+            if ((!servers || !servers.length) && NO_RESOLVER.indexOf(error.code) >= 0 && !net.isIP(parsed.hostname)) {
+                error.message = 'No internet: the Store uplink is offline (' + error.message + ')';
+            }
+            reject(error);
+        });
         if (timeout) req.setTimeout(timeout, () => req.destroy(new Error('Server request timed out')));
         if (body != null) req.write(body);
         req.end();
@@ -70,13 +98,12 @@ class LongPolling extends EventEmitter {
         return request(address, method, body, timeout, (created) => {
             req = created;
             this.activeRequests.push(req);
-        }).then((result) => { remove(); return result; }, (error) => { remove(); throw error; });
+        }, leaseDns(this.dataDir)).then((result) => { remove(); return result; }, (error) => { remove(); throw error; });
     }
 
     async connect() {
         if (this.running) return;
         this.running = true;
-        readDns(this.dataDir);
         try {
             const response = await this._request(this._url('/negotiate?negotiateVersion=1'), 'POST', '', 15000);
             if (response.status < 200 || response.status >= 300) throw new Error('Negotiate failed: HTTP ' + response.status);
@@ -151,4 +178,4 @@ class LongPolling extends EventEmitter {
     }
 }
 
-module.exports = { LongPolling, request, readDns };
+module.exports = { LongPolling, request, leaseDns, lookupVia };
